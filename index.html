@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Lab Assignment 4</title>
+    <style>
+        body {
+            text-align: center;
+            background-color: beige;
+        }
+        .button {
+            background-color: white;
+            border: none;
+            display: inline-block;
+            transition-duration: 0.4s;
+            cursor: pointer;
+            padding: 16px 32px;
+            margin: 4px 2px;
+        }
+        .button1 {
+            background-color: white;
+            color: black;
+            border: 2px solid #1CC0B1;
+        }
+        .button1:hover {
+            background-color: #1CC0B1;
+            color: white;
+        }
+        .button2 {
+            background-color: white;
+            color: black;
+            border: 2px solid #CC03F4;
+        }
+        .button2:hover {
+            background-color: #CC03F4;
+            color: white;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Singapore Covid-19 Case Cluster</h1>
+    <div class="text-center">
+        <button class="button button1" id="group1">Gender</button>
+        <button class="button button2" id="group2">Vaccination Status</button>
+    </div>
+    <svg></svg>
+    <div class="tooltip"></div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.13.0/d3-legend.js"></script>
+    <script>
+        let genderVal = ["male", "female"]
+        let genderColor = d3.scaleOrdinal(genderVal, ["steelblue", "pink"]);
+        let vaccinationVal = ["Not Vaccinated", "Partially Vaccinated (1 dose)", "Fully Vaccinated (2 doses)"]
+        let vaccinationColor = d3.scaleOrdinal(vaccinationVal, ["red", "yellow", "green"]);
+
+        let width = 800, height = 600;
+
+        let svg = d3.select("svg")
+            .attr("viewBox", "0 0 " + width + " " + height)
+
+        // Load external data
+        Promise.all([d3.json("https://chi-loong.github.io/CSC3007/assignments/links-sample.json"), d3.json("https://chi-loong.github.io/CSC3007/assignments/cases-sample.json")]).then(data => {
+
+            // Data preprocessing
+            data[0].forEach(e => {
+                e.source = e.infector;
+                e.target = e.infectee;
+            });
+
+            console.log(data[0]); //links
+            console.log(data[1]); //cases
+
+            // Initialize the links
+            let linkpath = svg.append("g")
+                .attr("id", "links")
+                .selectAll("path")
+                .data(data[0])
+                .enter()
+                .append("path")
+                .attr("stroke", "black")
+                .attr("fill", "none")
+
+            // Initialize the nodes
+            let node = svg.append("g")
+                .attr("id", "nodes")
+                .selectAll("circle")
+                .data(data[1])
+                .enter()
+                .append("circle")
+                .attr("r", 10)
+                .style("fill", d => {
+                    return genderColor(d.gender)
+                })
+                .on("mouseover", (event, d) => {
+                    d3.select(".tooltip")
+                        .html("Case Number: " + d.id + "<br>" + "Age: " + d.age + "<br>" +
+                            "Gender: " + d.gender + "<br>" + "Nationality: " + d.nationality + "<br>" +
+                            "Occupation: " + d.occupation + "<br>" + "Organization: " + d.organization + "<br>" +
+                            "Date Recorded: " + d.date + "<br>" + "Serology Result: " + d.serology + "<br>" +
+                            "Vaccinated: " + d.vaccinated)
+                        .style("position", "absolute")
+                        .style("background", "#fff")
+                        .style("left", (event.pageX) + "px")
+                        .style("top", (event.pageY) + "px");
+                    d3.select(event.currentTarget)
+                        .style("stroke", "black")
+                        .style("stroke-width", 1)
+                })
+                .on("mouseout", (event, d) => {
+                    d3.select(".tooltip")
+                        .text("");
+                    d3.select(event.currentTarget)
+                        .style("stroke", "")
+                })
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended));
+
+            // force stimulation
+            let force = d3.forceSimulation(data[1])
+                .force("link", d3.forceLink(data[0]).id(d => d.id)
+                    .distance(100)
+                    .strength(0.5))
+                .force("charge", d3.forceManyBody().strength(20))
+                .force("collide", d3.forceCollide().strength(0.5).radius(30))
+                .force("r", d3.forceRadial(200, width / 2, height / 2).strength(0.1))
+                .alphaMin(0.1)
+                .on("tick", d => {
+                    node
+                        .attr("cx", d => d.x)
+                        .attr("cy", d => d.y);
+                    linkpath
+                        .attr("d", d => {
+                            var dx = d.target.x - d.source.x,
+                                dy = d.target.y - d.source.y,
+                                dr = Math.sqrt(dx * dx + dy * dy);
+                            return "M" + d.source.x + "," + d.source.y + "A" + dr + "," + dr + " 0 0,1 " + d.target.x + "," + d.target.y;
+                        })
+                });
+
+            //drag interactivity
+            function dragstarted(event, d) {
+                if (!event.active) force.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) force.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            let cs1 = d3.scaleThreshold()
+                .domain(genderVal)
+                .range(["steelblue", "pink"]);
+
+            let cs2 = d3.scaleThreshold()
+                .domain(vaccinationVal)
+                .range(["red", "yellow", "green"]);
+
+
+            d3.select("#group1").on("click", function () {
+                updateSelection("gender")
+                //gender legend
+                var genderLegend = d3.legendColor()
+                    .labels(genderVal)
+                    .scale(cs1)
+                    .title("Gender Legend")
+
+                svg.append("g")
+                    .attr("transform", "translate(40, 20)")
+                    .style("font-size", "10px")
+                    .call(genderLegend)
+            })
+            d3.select("#group2").on("click", function () {
+                updateSelection("vaccination")
+                //vaccination legend 
+                var vaccinationLegend = d3.legendColor()
+                    .labels(vaccinationVal)
+                    .scale(cs2)
+                    .title("Vaccination Lengend")
+
+                svg.append("g") 
+                    .attr("transform", "translate(40, 100)")
+                    .style("font-size", "10px")
+                    .call(vaccinationLegend)
+            })
+            
+            function updateSelection(selection) {
+                node.style("fill", d => {
+                    if (selection == "gender")
+                        return genderColor(d.gender)
+                    else if (selection == "vaccination")
+                        return vaccinationColor(d.vaccinated)
+                })
+            }
+        })
+    </script>
+
+</body>
+
+</html>
